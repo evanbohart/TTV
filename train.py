@@ -12,7 +12,7 @@ from model import Model
 dir = Path('LJSpeech-1.1')
 
 df = pd.read_csv(dir.name+'/metadata.csv', sep='|')
-transcriptions = df['Normalized Transcription']
+transcriptions = df['Normalized_Transcription']
 
 token_list = {}
 
@@ -43,6 +43,54 @@ for transcription in transcriptions:
             token_list[token] = next_id
             next_id += 1
 
+def generate_data(
+    df,
+    files,
+    n_mels,
+    encoder_seq_len,
+    decoder_seq_len
+):
+    for i, file in enumerate(files):
+        y, sr = librosa.load(file, sr=22050)
+        mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=n_mels)
+        mel_db = librosa.power_to_db(mel, ref=np.max)
+
+        encoder_x_seq = torch.from_numpy(mel_db).float().transpose(0, 1)
+        mean = encoder_x_seq.mean(0, keepdim=True)
+        std = encoder_x_seq.std(0, keepdim=True)
+        encoder_x_seq = (encoder_x_seq - mean) / (std + 1e-6)
+
+        encoder_x_len = encoder_x_seq.shape[0]
+        encoder_len_diff = encoder_seq_len - encoder_x_len
+
+        tokens = tokenize(df['Normalized_Transcription'].iloc[i])
+
+        decoder_x_len = len(tokens) + 1
+        decoder_len_diff = decoder_seq_len - decoder_x_len
+
+        if encoder_len_diff < 0 or decoder_len_diff < 0:
+            df['Encoder_X'].iloc[i] = np.nan
+            df['SRC_Padding_Mask'].iloc[i] = np.nan
+
+            df['Decoder_X'].iloc[i] = np.nan
+            df['TGT_Padding_Mask'].iloc[i] = np.nan
+            df['TGT_Casual_Mask'].iloc[i] = np.nan
+        else:
+            df['Encoder_X'].iloc[i] = nn.functional.pad(encoder_x_seq, (0, diff))
+            df['SRC_Padding_Mask'].iloc[i]= torch.arange(encoder_seq_len) >= encoder_x_len
+
+            decoder_x = torch.zeros(decoder_seq_len, dtype=torch.long)
+            decoder_x[0] = 0
+
+            for j, token in enumerate(tokens):
+                decoder_x[j+1] = token_list[token]
+
+            df['TGT_Padding_Mask'].iloc[i] = torch.arange(decoder_seq_len) >= decoder_x_len
+            df['TGT_Casual_Mask'].iloc[i] = torch.triu(
+                torch.ones(decoder_seq_len, decoder_seq_len, dtype=torch.bool),
+                diagonal=1
+            )
+
 n_mels = 128
 vocab_size = len(token_list)
 d_model = 512
@@ -53,6 +101,10 @@ d_k = d_v = d_model // h
 d_ff = 2048
 n = 6
 dropout = 0.1
+
+generate_data(
+    df, (dir/'wavs').iterdir(), n_mels, encoder_seq_len, decoder_seq_len)
+)
 
 model = Model(
     encoder_x_dim = n_mels,
@@ -85,80 +137,30 @@ def lr_lambda(step):
 scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
 batches = 64
+count = 0
 
-encoder_x = torch.zeros(batches, encoder_seq_len, n_mels)
-decoder_x = torch.zeros(batches, decoder_seq_len, dtype=torch.int)
-decoder_x[:, 0] = token_list['<SOS>']
+for i in range(0, len(df), batches):
+    encoder_x = df['Encoder_X'].iloc[i:i+batches]
+    decoder_x = df['Decoder_X'].iloc[i:i+batches]
+    src_padding_mask = df['Decoder_X'].iloc[i:i+batches]
+    tgt_padding_mask = df['TGT_Padding_Mask'].iloc[i:i+batches]
+    tgt_casual_mask = df['TGT_Casual_Mask'].iloc[i:i+batches]
 
-src_padding_mask = torch.zeros(encoder_seq_len, dtype=torch.bool)
-tgt_padding_mask = torch.zeros(decoder_seq_len, dtype=torch.bool)
-tgt_casual_mask = torch.triu(
-    torch.ones(decoder_seq_len, decoder_seq_len, dtype=torch.bool),
-    diagonal=1
-)
+    logits = model(
+        encoder_x,
+        decoder_x,
+        src_padding_mask,
+        tgt_padding_mask,
+        tgt_casual_mask
+    )
+    loss = criterion(
+        logits.view(-1, vocab_size),
+        targets.view(-1)
+    )
+    loss.backward()
 
-targets = torch.zeros(batches, decoder_seq_len, dtype=torch.int)
+    optimizer.step()
+    scheduler.step()
 
-for i, (f, transcription) in enumerate(
-    zip((dir/'wavs').iterdir(), transcriptions)
-):
-    batch_pos = i % batches
-
-    y, sr = librosa.load(f, sr=22050)
-    mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=n_mels)
-    mel_db = librosa.power_to_db(mel, ref=np.max)
-
-    encoder_x_seq = torch.from_numpy(mel_db).float().transpose(0, 1)
-    mean = encoder_x_seq.mean(0, keepdim=True)
-    std = encoder_x_seq.std(0, keepdim=True)
-    encoder_x_seq = (encoder_x_seq - mean) / (std + 1e-6)
-    encoder_x_len = encoder_x_seq.shape[0]
-
-    src_padding_mask.zero_()
-
-    if encoder_x_len > encoder_seq_len:
-        print("1")
-    else:
-        src_padding_mask[encoder_x_len:] = True
-
-
-    targets[batch_pos].zero_()
-
-    tokens = tokenize(str(transcription))
-
-    for j, token in enumerate(tokens):
-        targets[batch_pos, j] = token_list[token]
-        decoder_x[batch_pos, j+1] = token_list[token]
-
-    targets[batch_pos, len(tokens)] = token_list['<EOS>']
-
-    decoder_x_len = len(tokens) + 1
- 
-    tgt_padding_mask.zero_()
-
-    if decoder_x_len > decoder_seq_len:
-        print("2")
-    else:
-        amt = decoder_seq_len - decoder_x_len
-        tgt_padding_mask[decoder_x_len:] = True
-
-    if i == batches - 1:
-        optimizer.zero_grad()
-
-        logits = model(
-            encoder_x,
-            decoder_x,
-            src_padding_mask,
-            tgt_padding_mask,
-            tgt_casual_mask
-        )
-        loss = criterion(
-            logits.view(-1, vocab_size),
-            targets.view(-1)
-        )
-        loss.backward()
-
-        optimizer.step()
-        scheduler.step()
-
-        print(f'Batch Loss: {loss.item():.4f}')
+    count += 1
+    print(f'Batch {count} Loss: {loss.item():.4f}')

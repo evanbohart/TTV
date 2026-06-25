@@ -112,7 +112,7 @@ class MultiHeadAttention(nn.Module):
         a = (q @ k_T) / math.sqrt(d_k) # (batch, h, seq_len, seq_len)
 
         if mask is not None:
-            a.masked_fill_(mask == True, -1e9)
+            a.masked_fill_(mask, float('-inf'))
 
         a = dropout(a.softmax(-1))
 
@@ -172,12 +172,15 @@ class EncoderBlock(nn.Module):
             [ResidualConnection(dropout) for i in range(2)]
         )
 
-    def forward(self, x, padding_mask):
+    def forward(self,
+                x,
+                src_padding_mask
+    ):
         # self attention
         x = self.res_connections[0](
             x,
             lambda x: self.sa(
-                x, x, x, padding_mask
+                x, x, x, src_padding_mask
             )
         )
         # feed forward
@@ -206,19 +209,25 @@ class DecoderBlock(nn.Module):
         self,
         x,
         encoder_output,
-        padding_mask,
-        casual_mask
+        src_padding_mask,
+        tgt_padding_mask,
+        tgt_casual_mask
     ):
+        src_padding_mask = src_padding_mask[:, None, None]
+        tgt_padding_mask =
+            tgt_padding_mask[:, None, None].expand(-1, -1, x.shape[1], -1)
+        tgt_casual_mask = causal_mask[None, None]
+
         x = self.res_connections[0](
             x,
             lambda x: self.sa(
-                x, x, x, casual_mask
+                x, x, x, tgt_padding_mask | tgt_casual_mask
             )
         )
         x = self.res_connections[1](
             x,
             lambda x: self.ca(
-                x, encoder_output, encoder_output, padding_mask
+                x, encoder_output, encoder_output, src_padding_mask
             )
         )
         x = self.res_connections[2](x, self.ff)
@@ -235,9 +244,9 @@ class Encoder(nn.Module):
         self.blocks = blocks
         self.norm = LayerNorm()
 
-    def forward(self, x, padding_mask):
+    def forward(self, x, src_padding_mask):
         for block in self.blocks:
-            x = block(x, padding_mask)
+            x = block(x, src_padding_mask)
 
         return self.norm(x)
 
@@ -251,10 +260,23 @@ class Decoder(nn.Module):
         self.blocks = blocks
         self.norm = LayerNorm()
 
-    def forward(self, x, encoder_output, padding_mask, casual_mask):
+    def forward(
+            self,
+            x,
+            encoder_output,
+            src_padding_mask,
+            tgt_padding_mask,
+            tgt_casual_mask
+    ):
         #x: (batch, seq_len, d_model)
         for block in self.blocks:
-            x = block(x, encoder_output, mask, casual_mask)
+            x = block(
+                x,
+                encoder_output,
+                src_padding_mask,
+                tgt_padding_mask,
+                tgt_casual_mask
+            )
 
         return self.norm(x)
 
@@ -335,7 +357,11 @@ class Transformer(nn.Module):
         )
 
         decoder_x = self.decoder(
-            decoder_x, encoder_x, tgt_padding_mask, tgt_casual_mask
+            decoder_x,
+            encoder_x,
+            src_padding_mask,
+            tgt_padding_mask,
+            tgt_padding_mask
         )
 
         # x -> (batch, seq_len, vocab_size)
