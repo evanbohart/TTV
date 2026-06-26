@@ -109,7 +109,7 @@ class MultiHeadAttention(nn.Module):
     def attention(q, k, v, mask, dropout: nn.Dropout):
         d_k = q.shape[-1]
         k_T = k.transpose(-2, -1) # (batch, h, d_k, seq_len)
-        a = (q @ k_T) / math.sqrt(d_k) # (batch, h, seq_len, seq_len)
+        a = (q @ k_T) / math.sqrt(d_k) # (batch, h, seq_len, seq_len) 
 
         if mask is not None:
             a.masked_fill_(mask, float('-inf'))
@@ -213,11 +213,6 @@ class DecoderBlock(nn.Module):
         tgt_padding_mask,
         tgt_casual_mask
     ):
-        src_padding_mask = src_padding_mask[:, None, None]
-        tgt_padding_mask =
-            tgt_padding_mask[:, None, None].expand(-1, -1, x.shape[1], -1)
-        tgt_casual_mask = causal_mask[None, None]
-
         x = self.res_connections[0](
             x,
             lambda x: self.sa(
@@ -351,6 +346,10 @@ class Transformer(nn.Module):
         tgt_padding_mask,
         tgt_casual_mask
     ):
+        src_padding_mask = src_padding_mask[:, None, None]
+        tgt_padding_mask = tgt_padding_mask[:, None, None].expand(-1, -1, decoder_x.shape[1], -1)
+        tgt_casual_mask = tgt_casual_mask[None, None] 
+
         # x: (batch, seq_len, d_model)
         encoder_x = self.encoder(
             encoder_x, src_padding_mask

@@ -30,7 +30,7 @@ def tokenize(text):
 
     return tokens
 
-token_list["<SOS>"] = 0
+token_list["<BOS>"] = 0
 token_list["<EOS>"] = 1
 
 next_id = 2
@@ -43,13 +43,27 @@ for transcription in transcriptions:
             token_list[token] = next_id
             next_id += 1
 
-def generate_data(
+def train(
     df,
     files,
     n_mels,
     encoder_seq_len,
-    decoder_seq_len
+    decoder_seq_len,
+    model,
+    criterion,
+    optimizer,
+    scheduler,
+    batches
 ):
+    encoder_x = []
+    decoder_x = []
+    src_padding_mask = []
+    tgt_padding_mask = []
+    tgt_casual_mask = []
+    targets = []
+
+    count = len(files)
+
     for i, file in enumerate(files):
         y, sr = librosa.load(file, sr=22050)
         mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=n_mels)
@@ -63,33 +77,82 @@ def generate_data(
         encoder_x_len = encoder_x_seq.shape[0]
         encoder_len_diff = encoder_seq_len - encoder_x_len
 
-        tokens = tokenize(df['Normalized_Transcription'].iloc[i])
+        tokens = tokenize(str(df['Normalized_Transcription'].iloc[i]))
 
         decoder_x_len = len(tokens) + 1
         decoder_len_diff = decoder_seq_len - decoder_x_len
 
-        if encoder_len_diff < 0 or decoder_len_diff < 0:
-            df['Encoder_X'].iloc[i] = np.nan
-            df['SRC_Padding_Mask'].iloc[i] = np.nan
+        if encoder_len_diff >= 0 and decoder_len_diff >= 0:
+            encoder_x.append(
+                nn.functional.pad(encoder_x_seq, (0, 0, 0, encoder_len_diff))
+            )
+            src_padding_mask.append(
+                torch.arange(encoder_seq_len) >= encoder_x_len
+            )
 
-            df['Decoder_X'].iloc[i] = np.nan
-            df['TGT_Padding_Mask'].iloc[i] = np.nan
-            df['TGT_Casual_Mask'].iloc[i] = np.nan
-        else:
-            df['Encoder_X'].iloc[i] = nn.functional.pad(encoder_x_seq, (0, diff))
-            df['SRC_Padding_Mask'].iloc[i]= torch.arange(encoder_seq_len) >= encoder_x_len
+            decoder_x.append(
+                torch.zeros(decoder_seq_len, dtype=torch.long)
+            )
+            decoder_x[-1][0] = token_list['<BOS>']
 
-            decoder_x = torch.zeros(decoder_seq_len, dtype=torch.long)
-            decoder_x[0] = 0
+            targets.append(
+                torch.full((decoder_seq_len,), -1, dtype=torch.long)
+            )
 
             for j, token in enumerate(tokens):
-                decoder_x[j+1] = token_list[token]
+                token_id = token_list[token]
+                decoder_x[-1][j+1] = token_id
+                targets[-1][j] = token_id
 
-            df['TGT_Padding_Mask'].iloc[i] = torch.arange(decoder_seq_len) >= decoder_x_len
-            df['TGT_Casual_Mask'].iloc[i] = torch.triu(
-                torch.ones(decoder_seq_len, decoder_seq_len, dtype=torch.bool),
-                diagonal=1
+            targets[-1][decoder_x_len-1] = token_list['<EOS>']
+
+            tgt_padding_mask.append(
+                torch.arange(decoder_seq_len) >= decoder_x_len
             )
+            tgt_casual_mask.append(
+                torch.triu(
+                    torch.ones(decoder_seq_len, decoder_seq_len, dtype=torch.bool),
+                    diagonal=1
+                )
+            )
+
+            if i % batches == 0 or i == count - 1:
+                for i in range(10000):
+                    print('Feeding forward...')
+
+                    encoder_x_batch = torch.stack(encoder_x)
+                    decoder_x_batch = torch.stack(decoder_x)
+                    src_padding_mask_batch = torch.stack(src_padding_mask)
+                    tgt_padding_mask_batch = torch.stack(tgt_padding_mask)
+                    tgt_casual_mask_batch = torch.stack(tgt_casual_mask)
+                    targets_batch = torch.stack(targets)
+
+                    logits = model(
+                        encoder_x_batch,
+                        decoder_x_batch,
+                        src_padding_mask_batch,
+                        tgt_padding_mask_batch,
+                        tgt_casual_mask_batch
+                    )
+                    loss = criterion(
+                        logits.view(-1, vocab_size),
+                        targets_batch.view(-1)
+                    )
+                    loss.backward()
+
+                    optimizer.step()
+                    scheduler.step()
+
+                    batch_num = i // batches if i % batches == 0 else i // batches + 1
+
+                    print(f"Batch {batch_num} Loss: {loss.item():.4f}")
+
+                encoder_x.clear()
+                decoder_x.clear()
+                src_padding_mask.clear()
+                tgt_padding_mask.clear()
+                tgt_casual_mask.clear()
+                targets.clear()
 
 n_mels = 128
 vocab_size = len(token_list)
@@ -101,10 +164,6 @@ d_k = d_v = d_model // h
 d_ff = 2048
 n = 6
 dropout = 0.1
-
-generate_data(
-    df, (dir/'wavs').iterdir(), n_mels, encoder_seq_len, decoder_seq_len)
-)
 
 model = Model(
     encoder_x_dim = n_mels,
@@ -136,31 +195,17 @@ def lr_lambda(step):
 
 scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
-batches = 64
-count = 0
+batches = 30
 
-for i in range(0, len(df), batches):
-    encoder_x = df['Encoder_X'].iloc[i:i+batches]
-    decoder_x = df['Decoder_X'].iloc[i:i+batches]
-    src_padding_mask = df['Decoder_X'].iloc[i:i+batches]
-    tgt_padding_mask = df['TGT_Padding_Mask'].iloc[i:i+batches]
-    tgt_casual_mask = df['TGT_Casual_Mask'].iloc[i:i+batches]
-
-    logits = model(
-        encoder_x,
-        decoder_x,
-        src_padding_mask,
-        tgt_padding_mask,
-        tgt_casual_mask
-    )
-    loss = criterion(
-        logits.view(-1, vocab_size),
-        targets.view(-1)
-    )
-    loss.backward()
-
-    optimizer.step()
-    scheduler.step()
-
-    count += 1
-    print(f'Batch {count} Loss: {loss.item():.4f}')
+train(
+    df,
+    list((dir/'wavs').iterdir()),
+    n_mels,
+    encoder_seq_len,
+    decoder_seq_len,
+    model,
+    criterion,
+    optimizer,
+    scheduler,
+    batches
+)
