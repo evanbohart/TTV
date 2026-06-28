@@ -9,7 +9,7 @@ import torchaudio
 import sys
 
 from model import Model
-from tokenizer import generate_tokens
+from tokenizer import tokenize, generate_tokens
 from build_data import build_df
 
 def train(
@@ -23,8 +23,15 @@ def train(
     scheduler,
     batches
 ):
+    encoder_x = []
+    decoder_x = []
+    src_padding_mask = []
+    tgt_padding_mask = []
+    tgt_casual_mask = []
+    targets = []
+
     for i, sample in df.iterrows():
-        path = load_clip(sample['path'])
+        path = sample['path']
 
         y, sr = librosa.load(path, sr=16000)
         mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=n_mels)
@@ -38,7 +45,7 @@ def train(
         encoder_x_len = encoder_x_seq.shape[0]
         encoder_len_diff = encoder_seq_len - encoder_x_len
 
-        tokens = tokenize(str(sample['sentence']))
+        tokens = tokenize(str(sample['transcript']))
 
         decoder_x_len = len(tokens) + 1
         decoder_len_diff = decoder_seq_len - decoder_x_len
@@ -77,7 +84,7 @@ def train(
                 )
             )
 
-            if (i+1) % batches == 0:
+            if (i+1) % batches == 0 or i == len(df) - 1:
                 print('Feeding forward...')
 
                 encoder_x_batch = torch.stack(encoder_x)
@@ -116,7 +123,7 @@ def train(
 
 n_mels = 128
 d_model = 512
-dencoder_seq_len = 1000
+encoder_seq_len = 500
 decoder_seq_len = 50
 h = 8
 d_k = d_v = d_model // h
@@ -128,8 +135,6 @@ df = build_df()
 
 vocab = generate_tokens(df)
 vocab_size = len(vocab)
-print(vocab_size)
-sys.exit()
 
 model = Model(
     encoder_x_dim = n_mels,
