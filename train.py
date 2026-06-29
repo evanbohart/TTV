@@ -104,8 +104,6 @@ def train(
                 decoder_x[-1][j+1] = token_id
                 targets[-1][j] = token_id
 
-            print(targets)
-
             tgt_padding_mask.append(
                 torch.arange(decoder_seq_len, device=device) >= decoder_x_len
             )
