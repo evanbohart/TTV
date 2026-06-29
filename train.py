@@ -10,6 +10,7 @@ import torchaudio.functional as functional
 
 from model import Model
 from tokenizer import tokenize, generate_tokens
+from build_data import build_df
 
 n_mels = 64
 d_model = 512
@@ -21,7 +22,7 @@ d_ff = 2048
 n = 6
 dropout = 0.1
 
-df = pd.read_parquet('data.parquet')
+df = build_df()
 
 vocab = generate_tokens(df)
 vocab_size = len(vocab)

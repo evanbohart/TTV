@@ -17,7 +17,7 @@ def build_df():
                 if path.exists():
                     rows.append({
                         'id': utt_id,
-                        'path': str(path.as_posix()),
+                        'path': str(path),
                         'transcript': transcript
                     })
 
