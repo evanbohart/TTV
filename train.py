@@ -40,16 +40,21 @@ def train(
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
+
     model = model.to(device)
+
+    scaler = torch.amp.GradScaler("cuda")
 
     encoder_x = []
     decoder_x = []
     src_padding_mask = []
     tgt_padding_mask = []
+
     tgt_causal_mask = torch.triu(
         torch.ones(decoder_seq_len, decoder_seq_len, dtype=torch.bool),
         diagonal=1
     )
+
     targets = []
 
     batch_num = 0
