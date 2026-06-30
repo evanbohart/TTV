@@ -78,6 +78,8 @@ class Data(Dataset):
         decoder_x = []
         tgt_padding_mask = []
 
+        targets = []
+
         for waveform, sr, transcript, *_, in batch:
             waveform = functional.resample(waveform, sr, 8000)
 
