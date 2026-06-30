@@ -105,7 +105,7 @@ class Data(Dataset):
             decoder_x.append(
                 torch.zeros((self.max_transcript_len), dtype=torch.long, device=self.device)
             )
-            decoder_x[-1][0] = vocab['<BOS>']
+            decoder_x[-1][0] = self.vocab['<BOS>']
 
             tgt_padding_mask.append(
                 (torch.arange(self.max_transcript_len) >= transcript_len).to(self.device)
@@ -119,7 +119,7 @@ class Data(Dataset):
                 decoder_x[-1][i+1] = transcript_encoded[i]
                 targets[-1][i] = transcript_encoded[i]
 
-                targets[-1][max_transcript_len-1] = vocab['<EOS>']
+                targets[-1][max_transcript_len-1] = self.vocab['<EOS>']
 
         encoder_x_batch = torch.stack(encoder_x)
         decoder_x_batch = torch.stack(decoder_x)
