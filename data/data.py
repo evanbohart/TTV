@@ -51,8 +51,8 @@ class Data(Dataset):
 
         self.to_mel = transforms.MelSpectrogram(
             sample_rate=8000,
-            n_fft=400,
-            hop_length=256,
+            n_fft=n_fft,
+            hop_length=hop_len,
             n_mels=n_mels
         )
 

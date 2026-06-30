@@ -11,10 +11,10 @@ from torch.utils.data import DataLoader
 
 batch_size = 30
 
-n_fft = 400
-hop_len = 256
+n_fft = 512
+hop_len = 128
 n_mels = 64
-encoder_seq_len = 512
+encoder_seq_len = 1024
 decoder_seq_len = 64
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
