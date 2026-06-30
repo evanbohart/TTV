@@ -12,7 +12,7 @@ class Embedding(nn.Module):
 
         self.d_model = d_model
         self.vocab_size = vocab_size
-        self.e = nn.Embedding(vocab_size, d_model)
+        self.e = nn.Embedding(vocab_size, d_model, padding_idx=0)
 
     def forward(self, x):
         #x: (batch, seq_len)

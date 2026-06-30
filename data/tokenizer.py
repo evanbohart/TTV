@@ -2,7 +2,7 @@ def tokenize(text):
     tokens = []
 
     for word in text.split():
-        token = "".join(
+        token = ''.join(
             char.lower() if char.isalnum() else ''
             for char in word
         )
@@ -15,10 +15,11 @@ def tokenize(text):
 def build_vocab(transcripts):
     vocab = {}
 
-    vocab["<BOS>"] = 0
-    vocab["<EOS>"] = 1
+    vocab['<PAD>']= 0
+    vocab['<BOS>'] = 1
+    vocab['<EOS>'] = 2
 
-    next_id = 2
+    next_id = 3
 
     for transcript in transcripts:
         for token in tokenize(transcript):

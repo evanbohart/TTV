@@ -105,7 +105,7 @@ class Data(Dataset):
             )
 
             decoder_x.append(
-                torch.zeros((self.max_transcript_len), dtype=torch.long, device=self.device)
+                torch.zeros(self.max_transcript_len, dtype=torch.long, device=self.device)
             )
             decoder_x[-1][0] = self.vocab['<BOS>']
 
@@ -114,10 +114,10 @@ class Data(Dataset):
             )
 
             targets.append(
-                torch.full((self.max_transcript_len,), -1, dtype=torch.long, device=self.device)
+                torch.zeros(self.max_transcript_len, -1, dtype=torch.long, device=self.device)
             )
 
-            for i in range(len(transcript_encoded)):
+            for i in range(transcript_len-1):
                 decoder_x[-1][i+1] = transcript_encoded[i]
                 targets[-1][i] = transcript_encoded[i]
 
