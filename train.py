@@ -53,7 +53,7 @@ def train(
 
             scheduler.step()
 
-            print(f"Epoch: {i} | Batch: {batch_num} | Loss: {loss.item():.4f}")
+            print(f"Epoch: {i+1} | Batch: {batch_num} | Loss: {loss.item():.4f}")
 
             batch_num += 1
 
