@@ -1,5 +1,6 @@
 from .tokenizer import tokenize
 
+import torch
 from torch.utils.data import Dataset
 import torchaudio.transforms as transforms
 import torchaudio.functional as functional
@@ -14,6 +15,7 @@ class Data(Dataset):
         n_mels: int,
         max_sample_len: int,
         max_transcript_len: int,
+        device: torch.device
     ):
         self.dataset = dataset
         self.max_sample_len = max_sample_len
@@ -44,6 +46,7 @@ class Data(Dataset):
             transcripts.append(transcript)
 
         self.vocab = build_vocab(transcripts)
+        self.device = device
 
         self.to_mel = transforms.MelSpectrogram(
             sample_rate=8000,
@@ -51,6 +54,8 @@ class Data(Dataset):
             hop_length=256,
             n_mels=n_mels,
         )(waveform)
+
+        self.to_db = transforms.AmplitudeToDB()
 
     def __len__(self):
         return len(self.valid_indices)
@@ -75,8 +80,8 @@ class Data(Dataset):
         for waveform, sr, transcript, *_, in batch:
             waveform = functional.resample(waveform, sr, 8000)
 
-            mel = self.to_mel(waveform)
-            mel = transforms.AmplitudeToDB()(mel)
+            mel = self.to_mel(waveform).to(self.device)
+            mel = self.to_db(mel)
             mel = mel.squeeze(0).transpose(0, 1)
             mel = (mel - mel.mean()) / (mel.std() + 1e-9)
 
@@ -93,20 +98,20 @@ class Data(Dataset):
             )
 
             src_padding_mask.append(
-                torch.arange(max_sample_len) >= mel_len
+                (torch.arange(max_sample_len) >= mel_len).to(self.device)
             )
 
             decoder_x.append(
-                torch.zeros((max_transcript_len), dtype=torch.long)
+                torch.zeros((max_transcript_len), dtype=torch.long, device=self.device)
             )
             decoder_x[-1][0] = vocab['<BOS>']
 
             tgt_padding_mask.append(
-                torch.arange(max_transcript_len) >= transcript_len
+                (torch.arange(max_transcript_len) >= transcript_len).to(self.device)
             )
 
             targets.append(
-                torch.full((max_transcript_len,), -1, dtype=torch.long)
+                torch.full((max_transcript_len,), -1, dtype=torch.long, device=self.device)
             )
 
             for i in range(len(transcript_encoded)):

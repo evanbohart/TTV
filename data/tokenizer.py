@@ -12,7 +12,7 @@ def tokenize(text):
 
     return tokens
 
-def build_vocab(data):
+def build_vocab(transcripts):
     vocab = {}
 
     vocab["<BOS>"] = 0
@@ -20,10 +20,8 @@ def build_vocab(data):
 
     next_id = 2
 
-    for i in range(len(data)):
-        _, _, transcript, *_ = data[i]
-
-        for token in tokenize(str(transcript)):
+    for transcript in transcripts:
+        for token in tokenize(transcript):
             if token and token not in vocab:
                 vocab[token] = next_id
                 next_id += 1

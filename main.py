@@ -16,6 +16,8 @@ n_mels = 64
 encoder_seq_len = 512
 decoder_seq_len = 64
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 data = Data(
     torchaudio.datasets.LIBRISPEECH(
         root='.',
@@ -26,18 +28,16 @@ data = Data(
     hop_len,
     n_mels,
     encoder_seq_len,
-    decoder_seq_len
+    decoder_seq_len,
+    device
 )
 
 loader = DataLoader(
-    data,
+data,
     batch_size=batch_size,
     shuffle=True,
     collate_fn=data.collate_fn
 )
-
-vocab = generate_tokens(data)
-vocab_size = len(vocab)
 
 d_model = 512
 h = 8
@@ -45,6 +45,8 @@ d_k = d_v = d_model // h
 d_ff = 2048
 n = 6
 dropout = 0.1
+
+vocab_size = len(data.vocab)
 
 model = Model(
     encoder_x_dim=n_mels,
@@ -60,6 +62,7 @@ model = Model(
     dropout=dropout
 )
 
+model = model.to(device)
 model.train()
 
 criterion = nn.CrossEntropyLoss(ignore_index=-1)
@@ -77,8 +80,6 @@ def lr_lambda(step):
 
 scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = model.to(device)
 scaler = torch.amp.GradScaler("cuda")
 
 epochs = 100
@@ -89,5 +90,6 @@ train(
     model,
     criterion,
     optimizer,
-    scheduler
+    scheduler,
+    scaler
 )

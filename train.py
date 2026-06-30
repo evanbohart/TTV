@@ -6,7 +6,8 @@ def train(
     model,
     criterion,
     optimizer,
-    scheduler
+    scheduler,
+    scaler
 ):
     tgt_causal_mask = torch.triu(
         torch.ones(decoder_seq_len, decoder_seq_len, dtype=torch.bool),
