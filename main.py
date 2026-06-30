@@ -65,6 +65,7 @@ model = Model(
 
 model = model.to(device)
 model.train()
+nn.utils.clip_grad_norm(model.parameters(), 1.0)
 
 criterion = nn.CrossEntropyLoss(ignore_index=-1)
 optimizer = optim.Adam(model.parameters(), lr=1.0, betas=(0.9,0.98), eps=1e-9)
