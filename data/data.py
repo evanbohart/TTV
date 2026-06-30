@@ -1,6 +1,7 @@
 from .tokenizer import tokenize, build_vocab
 
 import torch
+import torch.nn as nn
 from torch.utils.data import Dataset
 import torchaudio.transforms as transforms
 import torchaudio.functional as functional
