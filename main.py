@@ -92,5 +92,6 @@ train(
     criterion,
     optimizer,
     scheduler,
-    scaler
+    scaler,
+    device
 )
