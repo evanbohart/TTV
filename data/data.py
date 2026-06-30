@@ -1,4 +1,4 @@
-from .tokenizer import tokenize
+from .tokenizer import tokenize, build_vocab
 
 import torch
 from torch.utils.data import Dataset
