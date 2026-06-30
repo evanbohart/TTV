@@ -136,5 +136,5 @@ class Data(Dataset):
             decoder_x_batch,
             src_padding_mask_batch,
             tgt_padding_mask_batch,
-            targets
+            targets_batch
         )
