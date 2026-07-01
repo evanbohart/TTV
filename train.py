@@ -6,7 +6,6 @@ def train(
     model,
     criterion,
     optimizer,
-    scheduler,
     scaler,
     device
 ):
@@ -50,8 +49,6 @@ def train(
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
-
-            scheduler.step()
 
             print(f"Epoch: {i+1} | Batch: {batch_num} | Loss: {loss.item():.4f}")
 

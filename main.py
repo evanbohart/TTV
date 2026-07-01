@@ -19,8 +19,6 @@ decoder_seq_len = 64
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-torch.cuda.amp.autocast()
-
 data = Data(
     torchaudio.datasets.LIBRISPEECH(
         root='.',
@@ -70,19 +68,7 @@ model.train()
 nn.utils.clip_grad_norm(model.parameters(), 1.0)
 
 criterion = nn.CrossEntropyLoss(ignore_index=0)
-optimizer = optim.Adam(model.parameters(), lr=1.0, betas=(0.9,0.98), eps=1e-9)
-
-warmup_steps = 4000
-
-def lr_lambda(step):
-    step = max(step, 1)
-
-    return (d_model ** -0.5) * min(
-        step ** -0.5,
-        step * (warmup_steps ** -1.5)
-    )
-
-scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+optimizer = optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9,0.98), eps=1e-9, weight_decay=0.01)
 
 scaler = torch.amp.GradScaler("cuda")
 
@@ -94,7 +80,6 @@ train(
     model,
     criterion,
     optimizer,
-    scheduler,
     scaler,
     device
 )
